@@ -1,0 +1,170 @@
+import * as _ from 'lodash'
+import * as assert from 'assert'
+import * as program from 'commander'
+import * as pluralize from 'pluralize'
+import * as mongodb from 'mongodb'
+
+program
+    .option('-d, --databases <integer>', 'Number of databases', 1000)
+    .option('-c, --collections <integer>', 'Number of collections', 100)
+    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 10)
+    .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
+    .option('-Q, --queries <integer>', 'Number of concurrent queries', 10)
+    .option('-D, --distribution <function>', 'Distribution of operations', 'random')
+    .option('--maxDocuments <integer>', 'Maximum number of documents per insert', 10)
+    .option('-h, --host <host>', 'Hostname', '127.0.0.1')
+    .option('-p, --port <port>', 'Port', '27017')
+    .option('-r, --report-interval <ms>', 'Time between reports (0 to disable)', 1000)
+    .parse(process.argv)
+
+const config = _.pick(
+    program, 
+    [
+        'databases',
+        'collections',
+        'interval',
+        'inserts',
+        'queries',
+        'distribution',
+        'maxDocuments',
+        'host',
+        'port',
+        'reportInterval',
+    ]
+)
+
+const context = {
+    client: null,
+    lastReportTime: 0,
+    stats: {
+        pulses: 0,
+        inserts: 0,
+        queries: 0,
+        errors: 0,
+    }
+}
+
+/**
+ * Takes a dimension, such as database, and returns a name for an element within
+ * the dimension. The size of the dimension is configured by the user.
+ * 
+ * @param dimension What we are selecting (e.g. database, collection)
+ */
+const select = (dimension) => {
+    // Get the size of the dimension from the configuration
+    const size = config[pluralize.plural(dimension)]
+    const selection = Math.floor(size * Math.random())
+    
+    assert(
+        config.distribution === 'random',
+        `Distribution function ${config.distribution} is not supported`,
+    )
+
+    return `${dimension}_${selection}`
+}
+
+const getRandomChar = () =>
+    String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
+
+const generateDocument = () => ({
+    [getRandomChar()]: Math.floor(100 * Math.random()),
+})
+
+/**
+ * doOperation performs the specified mongo operation.
+ * 
+ * Perhaps we should make a connection pool to use.
+ * 
+ * @param opType Type of mongo operation (e.g. insert, query)
+ * @param database Name of the database to operate on
+ * @param collection Name of the collection to operate on
+ */
+const doOperation = async (opType, database, collection): Promise<void> => {
+    const db = await context.client.db(database)
+    const coll = await db.collection(collection)
+
+    if (opType === 'insert') {
+        // Randomized number of documents, from 1
+        const numDocuments = Math.floor(config.maxDocuments * Math.random()) + 1
+
+        const documents = Array.from({ length: numDocuments }, generateDocument)
+ 
+        const res = await coll.insertMany(documents)
+
+        context.stats.inserts++
+
+        assert.equal(numDocuments, res.result.n)
+        assert.equal(numDocuments, res.ops.length)
+
+    } else if (opType === 'query') {
+        await coll.find(generateDocument())
+
+        context.stats.queries++
+
+    } else {
+        throw Error(`Unknown operation ${opType}`)
+    }
+}
+
+/**
+ * doOperations initiates the operations of the specified type and returns
+ * Promises so the caller can wait for completion.
+ * 
+ * @param opType Type of mongo operation (e.g. insert, query)
+ * @returns Promises to complete the mongo operations
+ */
+const doOperations = (opType): Promise<void>[] => {
+    const num = config[pluralize.plural(opType)]
+
+    assert(num, `Operation type ${opType} has no concurrency setting`)
+
+    return Array.from({ length: num }, async () => {
+        const database = select('database')
+        const collection = select('collection')
+    
+        try {
+            await doOperation(opType, database, collection)
+        } catch (err) {
+            context.stats.errors++
+        }
+    })
+}
+
+/**
+ * Called on an interval to perform all mongo operations configured by the
+ * user.
+ */
+const operate = async (): Promise<void> => {
+    await Promise.all([
+        ...doOperations('insert'),
+        ...doOperations('query'),
+    ])
+    context.stats.pulses++
+
+    const now = Date.now()
+    if (config.reportInterval &&
+        config.reportInterval + context.lastReportTime < now
+    ) {
+        context.lastReportTime = now
+
+        console.log(context.stats)
+    }
+}
+
+/**
+ * Initializes operations at the user configured interval
+ */
+const init = async () => {
+    config.url = `mongodb://${config.host}:${config.port}`
+
+    assert(config.interval, 'Operating interval must be set')
+
+    console.log(config)
+
+    context.client = await mongodb.MongoClient.connect(config.url)
+    console.log('Connected to mongo')
+
+    setInterval(operate, config.interval)
+}
+
+init()

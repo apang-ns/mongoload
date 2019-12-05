@@ -11,11 +11,15 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^3.0.2",
-    "esm": "^3.2.25"
+    "esm": "^3.2.25",
+    "lodash": "^4.17.15",
+    "mongodb": "^3.3.5",
+    "pluralize": "^8.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.6.0",
     "@babel/preset-env": "^7.6.0",
+    "@types/mongodb": "^3.3.11",
     "@types/node": "^12.7.5"
   }
 }
