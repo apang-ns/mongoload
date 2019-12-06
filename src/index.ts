@@ -4,20 +4,36 @@ import * as program from 'commander'
 import * as pluralize from 'pluralize'
 import * as mongodb from 'mongodb'
 
+const coerceInteger = (val, prev) => {
+    const n = parseInt(val)
+
+    assert(!isNaN(n), `Expected "${val}" to be an integer`)
+
+    return n
+}
+
+const coerceFloat = (val, prev) => {
+    const n = parseFloat(val)
+
+    assert(!isNaN(n), `Expected "${val}" to be a float`)
+
+    return n
+}
+
 program
-    .option('-d, --databases <integer>', 'Number of databases', 1000)
-    .option('-c, --collections <integer>', 'Number of collections', 100)
-    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
-    .option('-r, --rampup <integer>', 'Linear load ramp up to th specified iteration (0 to disable)', 5000)
-    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.1)
-    .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
-    .option('-Q, --queries <integer>', 'Number of concurrent queries', 300)
+    .option('-d, --databases <integer>', 'Number of databases', coerceInteger, 1000)
+    .option('-c, --collections <integer>', 'Number of collections', coerceInteger, 100)
+    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', coerceInteger, 100)
+    .option('-r, --rampup <integer>', 'Linear load ramp up to th specified iteration (0 to disable)', coerceInteger, 5000)
+    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', coerceFloat, 0.1)
+    .option('-I, --inserts <integer>', 'Number of concurrent insertions', coerceInteger, 10)
+    .option('-Q, --queries <integer>', 'Number of concurrent queries', coerceInteger, 300)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
-    .option('--maxDocuments <integer>', 'Maximum number of documents per insert', 10)
+    .option('--maxDocuments <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
     .option('-p, --port <port>', 'Port', '27017')
-    .option('-P, --pool-size <integer>', 'Mongo client connection pool size', 100)
-    .option('-R, --report-interval <ms>', 'Time between reports (0 to disable)', 1000)
+    .option('-P, --pool-size <integer>', 'Mongo client connection pool size', coerceInteger, 100)
+    .option('-R, --report-interval <ms>', 'Time between reports (0 to disable)', coerceInteger, 1000)
     .parse(process.argv)
 
 const config = _.pick(
@@ -83,7 +99,7 @@ const select = (dimension) => {
     
     assert(
         config.distribution === 'random',
-        `Distribution function ${config.distribution} is not supported`,
+        `Distribution function "${config.distribution}" is not supported`,
     )
 
     return `${dimension}_${selection}`
@@ -124,7 +140,7 @@ const doOperation = async (opType, database, collection): Promise<void> => {
         await coll.find(generateDocument())
 
     } else {
-        throw Error(`Unknown operation ${opType}`)
+        throw Error(`Unknown operation "${opType}"`)
     }
 }
 
@@ -140,8 +156,6 @@ const doOperations = (opType): Promise<void>[] => {
     const scaledOps = Math.ceil(
         context.stats.pulse.done / (config.rampup || 1) * maxOps
     )
-
-    assert(!isNaN(scaledOps), `Operation type ${opType} has no concurrency setting`)
 
     return Array.from({ length: scaledOps }, async () => {
         const statObj = context.stats.ops[opType]
@@ -218,7 +232,7 @@ const init = async () => {
         },
     )
 
-    console.log(`Connected to mongo at ${config.url}`)
+    console.log(`Connected to mongo at "${config.url}"`)
 
     setInterval(operate, config.interval)
 }
