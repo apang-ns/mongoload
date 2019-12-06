@@ -46,18 +46,21 @@ const context = {
             init: 0,
             done: 0,
             time: 0,
+            latency: 0,
         },
         ops: {
             insert: {
                 init: 0,
                 done: 0,
                 time: 0,
+                latency: 0,
                 error: 0,
             },
             query: {
                 init: 0,
                 done: 0,
                 time: 0,
+                latency: 0,
                 error: 0,
             },
         },
@@ -151,6 +154,7 @@ const doOperations = (opType): Promise<void>[] => {
 
         statObj.done++
         statObj.time += Date.now() - startTime
+        statObj.latency = Math.floor(statObj.time / statObj.done        )
     })
 }
 
@@ -159,35 +163,34 @@ const doOperations = (opType): Promise<void>[] => {
  * user.
  */
 const operate = async (): Promise<void> => {
-    const statsObj = context.stats.pulse
-
-    const outstanding = (statsObj.init - statsObj.done) / statsObj.done
-
-    if (outstanding > config.backoff) {
-        statsObj.skip++
-        return
-    }
+    const statObj = context.stats.pulse
 
     const startTime = Date.now()
+    const outstanding = (statObj.init - statObj.done) / statObj.done
 
-    statsObj.init++
+    if (outstanding > config.backoff) {
+        statObj.skip++
 
-    await Promise.all([
-        ...doOperations('insert'),
-        ...doOperations('query'),
-    ])
+    } else {
+        statObj.init++
 
-    const doneTime = Date.now()
+        await Promise.all([
+            ...doOperations('insert'),
+            ...doOperations('query'),
+        ])
 
-    statsObj.done++
-    statsObj.time += doneTime - startTime
-    
+        statObj.done++
+        statObj.time += Date.now() - startTime
+        statObj.latency = Math.floor(statObj.time / statObj.done)
+    }
+
     if (config.reportInterval &&
-        config.reportInterval + context.lastReportTime < doneTime
+        config.reportInterval + context.lastReportTime < Date.now()
     ) {
-        context.lastReportTime = doneTime
+        context.lastReportTime = Date.now()
 
-        console.log(context.stats)
+        console.log(new Date())
+        console.log(JSON.stringify(context.stats, null, 2))
     }
 }
 
