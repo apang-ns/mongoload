@@ -7,7 +7,7 @@ import * as mongodb from 'mongodb'
 program
     .option('-d, --databases <integer>', 'Number of databases', 1000)
     .option('-c, --collections <integer>', 'Number of collections', 100)
-    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
+    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 10)
     .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.05)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
     .option('-Q, --queries <integer>', 'Number of concurrent queries', 100)
@@ -15,6 +15,7 @@ program
     .option('--maxDocuments <integer>', 'Maximum number of documents per insert', 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
     .option('-p, --port <port>', 'Port', '27017')
+    .option('-P, --pool-size <integer>', 'Mongo client connection pool size', 100)
     .option('-r, --report-interval <ms>', 'Time between reports (0 to disable)', 1000)
     .parse(process.argv)
 
@@ -31,6 +32,7 @@ const config = _.pick(
         'maxDocuments',
         'host',
         'port',
+        'poolSize',
         'reportInterval',
     ]
 )
@@ -199,7 +201,10 @@ const init = async () => {
 
     console.log(config)
 
-    context.client = await mongodb.MongoClient.connect(config.url)
+    context.client = await mongodb.MongoClient.connect(config.url, {
+       // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
+       poolSize: config.poolSize,
+    })
 
     console.log(`Connected to mongo at ${config.url}`)
 
