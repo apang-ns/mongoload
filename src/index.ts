@@ -7,8 +7,8 @@ import * as mongodb from 'mongodb'
 program
     .option('-d, --databases <integer>', 'Number of databases', 1000)
     .option('-c, --collections <integer>', 'Number of collections', 100)
-    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 10)
-    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.1)
+    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
+    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.7)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
     .option('-Q, --queries <integer>', 'Number of concurrent queries', 300)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
@@ -166,7 +166,7 @@ const operate = async (): Promise<void> => {
     const statObj = context.stats.pulse
 
     const startTime = Date.now()
-    const outstanding = (statObj.init - statObj.done) / statObj.done
+    const outstanding = (statObj.init - statObj.done) / statObj.init
 
     if (outstanding > config.backoff) {
         statObj.skip++
