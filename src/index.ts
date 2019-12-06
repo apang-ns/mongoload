@@ -8,7 +8,8 @@ program
     .option('-d, --databases <integer>', 'Number of databases', 1000)
     .option('-c, --collections <integer>', 'Number of collections', 100)
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
-    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.7)
+    .option('-r, --rampup <integer>', 'Linear load ramp up to th specified iteration (0 to disable)', 5000)
+    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.1)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
     .option('-Q, --queries <integer>', 'Number of concurrent queries', 300)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
@@ -25,6 +26,7 @@ const config = _.pick(
         'databases',
         'collections',
         'interval',
+        'rampup',
         'backoff',
         'inserts',
         'queries',
@@ -42,11 +44,11 @@ const context = {
     lastReportTime: 0,
     stats: {
         pulse: {
-            skip: 0,
             init: 0,
             done: 0,
             time: 0,
             latency: 0,
+            skip: 0,
         },
         ops: {
             insert: {
@@ -133,11 +135,15 @@ const doOperation = async (opType, database, collection): Promise<void> => {
  * @returns Promises to complete the mongo operations
  */
 const doOperations = (opType): Promise<void>[] => {
-    const num = config[pluralize.plural(opType)]
+    const maxOps = config[pluralize.plural(opType)]
+    const scaledOps = Math.ceil(
+        context.stats.pulse.done / 
+        (config.rampup ? config.rampup * maxOps : 1)
+    )
 
-    assert(num, `Operation type ${opType} has no concurrency setting`)
+    assert(!isNaN(scaledOps), `Operation type ${opType} has no concurrency setting`)
 
-    return Array.from({ length: num }, async () => {
+    return Array.from({ length: scaledOps }, async () => {
         const statObj = context.stats.ops[opType]
         const startTime = Date.now()
 
