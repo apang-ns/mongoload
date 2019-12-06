@@ -17,7 +17,7 @@ program
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
     .option('-p, --port <port>', 'Port', '27017')
     .option('-P, --pool-size <integer>', 'Mongo client connection pool size', 100)
-    .option('-r, --report-interval <ms>', 'Time between reports (0 to disable)', 1000)
+    .option('-R, --report-interval <ms>', 'Time between reports (0 to disable)', 1000)
     .parse(process.argv)
 
 const config = _.pick(
@@ -41,6 +41,7 @@ const config = _.pick(
 
 const context = {
     client: null,
+    startTime: 0,
     lastReportTime: 0,
     stats: {
         pulse: {
@@ -137,8 +138,7 @@ const doOperation = async (opType, database, collection): Promise<void> => {
 const doOperations = (opType): Promise<void>[] => {
     const maxOps = config[pluralize.plural(opType)]
     const scaledOps = Math.ceil(
-        context.stats.pulse.done / 
-        (config.rampup ? config.rampup * maxOps : 1)
+        context.stats.pulse.done / (config.rampup || 1) * maxOps
     )
 
     assert(!isNaN(scaledOps), `Operation type ${opType} has no concurrency setting`)
@@ -195,7 +195,7 @@ const operate = async (): Promise<void> => {
     ) {
         context.lastReportTime = Date.now()
 
-        console.log(new Date())
+        console.log(new Date(), `Elapsed: ${Math.floor((Date.now() - context.startTime) / 1000)} seconds`)
         console.log(JSON.stringify(context.stats, null, 2))
     }
 }
@@ -204,16 +204,19 @@ const operate = async (): Promise<void> => {
  * Initializes operations at the user configured interval
  */
 const init = async () => {
-    config.url = `mongodb://${config.host}:${config.port}`
-
     assert(config.interval, 'Operating interval must be set')
 
     console.log(config)
 
-    context.client = await mongodb.MongoClient.connect(config.url, {
-       // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
-       poolSize: config.poolSize,
-    })
+    context.startTime = Date.now()
+
+    context.client = await mongodb.MongoClient.connect(
+        `mongodb://${config.host}:${config.port}`,
+        {
+        // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
+        poolSize: config.poolSize,
+        },
+    )
 
     console.log(`Connected to mongo at ${config.url}`)
 
