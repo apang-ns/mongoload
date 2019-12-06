@@ -9,7 +9,7 @@ program
     .option('-c, --collections <integer>', 'Number of collections', 100)
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
-    .option('-Q, --queries <integer>', 'Number of concurrent queries', 10)
+    .option('-Q, --queries <integer>', 'Number of concurrent queries', 100)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
     .option('--maxDocuments <integer>', 'Maximum number of documents per insert', 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
