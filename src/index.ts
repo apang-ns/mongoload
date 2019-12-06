@@ -7,7 +7,7 @@ import * as mongodb from 'mongodb'
 program
     .option('-d, --databases <integer>', 'Number of databases', 1000)
     .option('-c, --collections <integer>', 'Number of collections', 100)
-    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 10)
+    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
     .option('-Q, --queries <integer>', 'Number of concurrent queries', 10)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
@@ -37,10 +37,26 @@ const context = {
     client: null,
     lastReportTime: 0,
     stats: {
-        pulses: 0,
-        inserts: 0,
-        queries: 0,
-        errors: 0,
+        pulse: {
+            skip: 0,
+            init: 0,
+            done: 0,
+            time: 0,
+        },
+        ops: {
+            insert: {
+                init: 0,
+                done: 0,
+                time: 0,
+                error: 0,
+            },
+            query: {
+                init: 0,
+                done: 0,
+                time: 0,
+                error: 0,
+            },
+        },
     }
 }
 
@@ -91,15 +107,11 @@ const doOperation = async (opType, database, collection): Promise<void> => {
  
         const res = await coll.insertMany(documents)
 
-        context.stats.inserts++
-
         assert.equal(numDocuments, res.result.n)
         assert.equal(numDocuments, res.ops.length)
 
     } else if (opType === 'query') {
         await coll.find(generateDocument())
-
-        context.stats.queries++
 
     } else {
         throw Error(`Unknown operation ${opType}`)
@@ -119,14 +131,22 @@ const doOperations = (opType): Promise<void>[] => {
     assert(num, `Operation type ${opType} has no concurrency setting`)
 
     return Array.from({ length: num }, async () => {
+        const statObj = context.stats.ops[opType]
+        const startTime = Date.now()
+
+        statObj.init++        
+
         const database = select('database')
         const collection = select('collection')
     
         try {
             await doOperation(opType, database, collection)
         } catch (err) {
-            context.stats.errors++
+            statObj.errors++
         }
+
+        statObj.done++
+        statObj.time += Date.now() - startTime
     })
 }
 
@@ -135,17 +155,24 @@ const doOperations = (opType): Promise<void>[] => {
  * user.
  */
 const operate = async (): Promise<void> => {
+    const startTime = Date.now()
+
+    context.stats.pulse.init++
+
     await Promise.all([
         ...doOperations('insert'),
         ...doOperations('query'),
     ])
-    context.stats.pulses++
 
-    const now = Date.now()
+    const doneTime = Date.now()
+
+    context.stats.pulse.done++
+    context.stats.pulse.time += doneTime - startTime
+    
     if (config.reportInterval &&
-        config.reportInterval + context.lastReportTime < now
+        config.reportInterval + context.lastReportTime < doneTime
     ) {
-        context.lastReportTime = now
+        context.lastReportTime = doneTime
 
         console.log(context.stats)
     }
@@ -162,7 +189,8 @@ const init = async () => {
     console.log(config)
 
     context.client = await mongodb.MongoClient.connect(config.url)
-    console.log('Connected to mongo')
+
+    console.log(`Connected to mongo at ${config.url}`)
 
     setInterval(operate, config.interval)
 }
