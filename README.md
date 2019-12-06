@@ -1,5 +1,12 @@
 # mongoload
 
+Setup
+
+Docker with 8 cores and 16GB of memory.
+Node and Typescript installed.
+
+Operation
+
 apang-mbp:~ andypang$ docker run -p 27017:27017 --rm --name mongo -d mongo:3.6.12
 b5516fbf9619771e2d5c529296375654c288924211978d5969015594b320a890
 apang-mbp:~ andypang$ docker exec -it mongo bash
