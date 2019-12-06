@@ -8,6 +8,7 @@ program
     .option('-d, --databases <integer>', 'Number of databases', 1000)
     .option('-c, --collections <integer>', 'Number of collections', 100)
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', 100)
+    .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', 0.05)
     .option('-I, --inserts <integer>', 'Number of concurrent insertions', 10)
     .option('-Q, --queries <integer>', 'Number of concurrent queries', 100)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
@@ -23,6 +24,7 @@ const config = _.pick(
         'databases',
         'collections',
         'interval',
+        'backoff',
         'inserts',
         'queries',
         'distribution',
@@ -155,9 +157,18 @@ const doOperations = (opType): Promise<void>[] => {
  * user.
  */
 const operate = async (): Promise<void> => {
+    const statsObj = context.stats.pulse
+
+    const outstanding = (statsObj.init - statsObj.done) / statsObj.done
+
+    if (outstanding > config.backoff) {
+        statsObj.skip++
+        return
+    }
+
     const startTime = Date.now()
 
-    context.stats.pulse.init++
+    statsObj.init++
 
     await Promise.all([
         ...doOperations('insert'),
@@ -166,8 +177,8 @@ const operate = async (): Promise<void> => {
 
     const doneTime = Date.now()
 
-    context.stats.pulse.done++
-    context.stats.pulse.time += doneTime - startTime
+    statsObj.done++
+    statsObj.time += doneTime - startTime
     
     if (config.reportInterval &&
         config.reportInterval + context.lastReportTime < doneTime
