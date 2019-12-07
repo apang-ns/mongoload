@@ -24,10 +24,10 @@ program
     .option('-d, --databases <integer>', 'Number of databases', coerceInteger, 1000)
     .option('-c, --collections <integer>', 'Number of collections', coerceInteger, 100)
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', coerceInteger, 100)
-    .option('-r, --rampup <integer>', 'Linear load ramp up to th specified iteration (0 to disable)', coerceInteger, 5000)
+    .option('-r, --rampup <integer>', 'Load ramp up to the specified iteration (0 to disable)', coerceInteger, 50000)
     .option('-b, --backoff <percentage>', 'Percentage of outstanding requests before backing off', coerceFloat, 0.1)
-    .option('-I, --inserts <integer>', 'Number of concurrent insertions', coerceInteger, 10)
-    .option('-Q, --queries <integer>', 'Number of concurrent queries', coerceInteger, 300)
+    .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 10)
+    .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
     .option('--maxDocuments <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
@@ -127,7 +127,7 @@ const doOperation = async (opType, database, collection): Promise<void> => {
 
     if (opType === 'insert') {
         // Randomized number of documents, from 1
-        const numDocuments = Math.floor(config.maxDocuments * Math.random()) + 1
+        const numDocuments = Math.ceil(config.maxDocuments * Math.random())
 
         const documents = Array.from({ length: numDocuments }, generateDocument)
  
@@ -144,6 +144,10 @@ const doOperation = async (opType, database, collection): Promise<void> => {
     }
 }
 
+const rampFactor = () => config.rampup > context.stats.pulse.done ?
+    (context.stats.pulse.done / config.rampup) :
+    1
+
 /**
  * doOperations initiates the operations of the specified type and returns
  * Promises so the caller can wait for completion.
@@ -152,12 +156,14 @@ const doOperation = async (opType, database, collection): Promise<void> => {
  * @returns Promises to complete the mongo operations
  */
 const doOperations = (opType): Promise<void>[] => {
-    const maxOps = config[pluralize.plural(opType)]
-    const scaledOps = Math.ceil(
-        context.stats.pulse.done / (config.rampup || 1) * maxOps
-    )
+    const targetOps = config[pluralize.plural(opType)]
 
-    return Array.from({ length: scaledOps }, async () => {
+    // Target number of operations, reduced by a ramp factor, with some
+    // randomness, multiplied by two to reach the target ops specified by the
+    // user
+    const ops = Math.ceil(targetOps * rampFactor() * Math.random() * 2)
+
+    return Array.from({ length: ops }, async () => {
         const statObj = context.stats.ops[opType]
         const startTime = Date.now()
 
@@ -174,7 +180,7 @@ const doOperations = (opType): Promise<void>[] => {
 
         statObj.done++
         statObj.time += Date.now() - startTime
-        statObj.latency = Math.floor(statObj.time / statObj.done        )
+        statObj.latency = Math.floor(statObj.time / statObj.done)
     })
 }
 
@@ -187,8 +193,9 @@ const operate = async (): Promise<void> => {
 
     const startTime = Date.now()
     const outstanding = (statObj.init - statObj.done) / statObj.init
+    const backoff = config.backoff * rampFactor()
 
-    if (outstanding > config.backoff) {
+    if (outstanding > backoff) {
         statObj.skip++
 
     } else {
