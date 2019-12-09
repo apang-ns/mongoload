@@ -26,6 +26,7 @@ program
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', coerceInteger, 100)
     .option('-c, --concurrency <integer>', 'Number of concurrent requests', coerceInteger, 256)
     .option('-r, --rampup', 'Ramp up load')
+    .option('--no-precreate', 'Do not precreate databases and collections')
     .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 10)
     .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
@@ -43,6 +44,7 @@ const config = _.pick(
         'interval',
         'concurrency',
         'rampup',
+        'precreate',
         'inserts',
         'queries',
         'distribution',
@@ -86,6 +88,8 @@ const context = {
     }
 }
 
+const getName = (dimension, i) => `${dimension}_${i}`
+
 /**
  * Takes a dimension, such as database, and returns a name for an element within
  * the dimension. The size of the dimension is configured by the user.
@@ -102,7 +106,7 @@ const select = (dimension) => {
         `Distribution function "${config.distribution}" is not supported`,
     )
 
-    return `${dimension}_${selection}`
+    return getName(dimension, selection)
 }
 
 const getRandomChar = () =>
@@ -246,6 +250,22 @@ const operate = async (): Promise<void> => {
     }
 }
 
+const createCollections = async () => {
+    console.log(`Creating ${config.databases} databases with ${config.collections} collections`)
+    console.time('createCollection')
+
+    for (let i = 0; i < config.databases; i++) {
+        const db = await context.client.db(getName('database', i))
+
+        for (let j = 0; j < config.collections; j++) {
+            console.log('creating db', i, 'coll', j)
+            await db.createCollection(getName('collection', j))
+        }
+    }
+
+    console.timeEnd('createCollection')
+}
+
 /**
  * Initializes operations at the user configured interval
  */
@@ -267,6 +287,10 @@ const init = async () => {
     )
 
     console.log(`Connected to mongo at "${url}"`)
+
+    if (config.precreate) {
+        await createCollections()
+    }
 
     setInterval(operate, config.interval)
 }
