@@ -21,7 +21,7 @@ const coerceFloat = (val, prev) => {
 }
 
 program
-    .option('-d, --databases <integer>', 'Number of databases', coerceInteger, 300)
+    .option('-d, --databases <integer>', 'Number of databases', coerceInteger, 500)
     .option('-c, --collections <integer>', 'Number of collections', coerceInteger, 100)
     .option('-i, --interval <ms>', 'How often to operate (milliseconds)', coerceInteger, 100)
     .option('-c, --concurrency <integer>', 'Number of concurrent requests', coerceInteger, 256)
@@ -252,18 +252,19 @@ const operate = async (): Promise<void> => {
 
 const createCollections = async () => {
     console.log(`Creating ${config.databases} databases with ${config.collections} collections`)
-    console.time('createCollection')
+    console.time('createCollections')
 
     for (let i = 0; i < config.databases; i++) {
-        const db = await context.client.db(getName('database', i))
+        const dbName = getName('database', i)
+        const db = await context.client.db(dbName)
 
         for (let j = 0; j < config.collections; j++) {
-            console.log('creating db', i, 'coll', j)
             await db.createCollection(getName('collection', j))
         }
+        console.log(`Created ${config.collections} collections in database ${dbName}`)
     }
 
-    console.timeEnd('createCollection')
+    console.timeEnd('createCollections')
 }
 
 /**
