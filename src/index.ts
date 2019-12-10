@@ -6,6 +6,7 @@ import * as RJSON from 'relaxed-json'
 const config = {
     numDatabases: 128, // Number of databases to simulate
     numCollections: 128, // Number of collections to simulate
+    frequencyScale: 1, // Increase frequency across all ops by this factor
     rampup: false, // Slowly ramp up load
     precreate: true, // Precreate databases and collections
     host: '127.0.0.1',
@@ -234,10 +235,10 @@ const createClient = async (opType) => {
 const initOperations = async (opType) => {
     const client = await createClient(opType)
 
-    return [
-        async () => await Promise.all(doOperations(client, opType)),
-        config.ops[opType].intervalMs,
-    ]
+    return {
+        handler: async () => await Promise.all(doOperations(client, opType)),
+        interval: Math.ceil(config.ops[opType].intervalMs / config.frequencyScale),
+    }
 }
 
 const report = () => {
@@ -281,7 +282,7 @@ const init = async () => {
 
     const opTypes = Object.keys(config.ops)
 
-    for await (const [handler, interval] of opTypes.map(initOperations)) {
+    for await (const { handler, interval } of opTypes.map(initOperations)) {
         setInterval(handler, interval)
     }
 }
