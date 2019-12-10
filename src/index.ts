@@ -4,7 +4,7 @@ import * as mongodb from 'mongodb'
 import * as RJSON from 'relaxed-json'
 
 const config = {
-    numDatabases: 128, // Number of databases to simulate
+    numDatabases: 192, // Number of databases to simulate
     numCollections: 128, // Number of collections to simulate
     frequencyScale: 1, // Increase frequency across all ops by this factor
     rampup: false, // Slowly ramp up load

@@ -3,7 +3,7 @@
 Setup
 
 Docker with 8 cores and 16GB of memory.
-Node and Typescript installed.
+Node v10+ and Typescript installed.
 
 Operation
 
