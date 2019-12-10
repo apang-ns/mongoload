@@ -4,7 +4,7 @@ import * as mongodb from 'mongodb'
 import * as RJSON from 'relaxed-json'
 
 const config = {
-    numDatabases: 256, // Number of databases to simulate
+    numDatabases: 128, // Number of databases to simulate
     numCollections: 128, // Number of collections to simulate
     rampup: false, // Slowly ramp up load
     precreate: true, // Precreate databases and collections
@@ -19,7 +19,7 @@ const config = {
             maxDocumentsPerOp: 10, // Maximum number of documents per insert
         },
         query: {
-            opsPerInterval: 10,
+            opsPerInterval: 16,
             concurrency: 1024,
             intervalMs: 100,
         },
