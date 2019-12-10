@@ -30,7 +30,7 @@ program
     .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 10)
     .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
-    .option('--maxDocuments <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
+    .option('--max-documents <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
     .option('-p, --port <port>', 'Port', '27017')
     .option('-R, --report-interval <ms>', 'Time between reports (0 to disable)', coerceInteger, 1000)
@@ -56,36 +56,25 @@ const config = _.pick(
 )
 
 const context = {
-    client: null,
     startTime: 0,
-    lastReportTime: 0,
-    outstandingRequests: 0,
-    stats: {
-        pulse: {
-            init: 0,
-            done: 0,
-            time: 0,
-            latency: 0,
-        },
-        ops: {
-            insert: {
-                init: 0,
-                done: 0,
-                time: 0,
-                latency: 0,
-                error: 0,
-                skip: 0,
-            },
-            query: {
-                init: 0,
-                done: 0,
-                time: 0,
-                latency: 0,
-                error: 0,
-                skip: 0,
-            },
-        },
-    }
+    insert: {
+        init: 0,
+        done: 0,
+        time: 0,
+        latency: 0,
+        error: 0,
+        skip: 0,
+        lastReportTime: 0,
+    },
+    query: {
+        init: 0,
+        done: 0,
+        time: 0,
+        latency: 0,
+        error: 0,
+        skip: 0,
+        lastReportTime: 0,
+    },
 }
 
 const getName = (dimension, i) => `${dimension}_${i}`
@@ -125,8 +114,8 @@ const generateDocument = () => ({
  * @param database Name of the database to operate on
  * @param collection Name of the collection to operate on
  */
-const doOperation = async (opType, database, collection): Promise<void> => {
-    const db = await context.client.db(database)
+const doOperation = async (client, opType, database, collection): Promise<void> => {
+    const db = await client.db(database)
     const coll = await db.collection(collection)
 
     if (opType === 'insert') {
@@ -150,28 +139,31 @@ const doOperation = async (opType, database, collection): Promise<void> => {
     }
 }
 
-const rampFactor = (max) => {
+const getNumOps = (opType) => {
+    const targetOps = config[pluralize.plural(opType)]
+
     if (!config.rampup) {
-        return 1
+        return targetOps
     }
 
-    const done = context.stats.pulse.done
+    const done = context[opType].done
+
     const RAMP_FACTOR = 5000
     const RAMP_SHAPE = 0.23
 
-    // asymptotic curve that crosses zero and approaches "max"
-    const factor = (
+    // asymptotic curve that crosses zero and approaches targetOps
+    const ops = (
         (
             -1 *
             RAMP_FACTOR /
             (
-                done**RAMP_SHAPE + (RAMP_FACTOR / max)
+                done**RAMP_SHAPE + (RAMP_FACTOR / targetOps)
             )
         ) +
-        max
+        targetOps
     )
 
-    return factor
+    return ops
 }
 
 /**
@@ -181,72 +173,79 @@ const rampFactor = (max) => {
  * @param opType Type of mongo operation (e.g. insert, query)
  * @returns Promises to complete the mongo operations
  */
-const doOperations = (opType): Promise<void>[] => {
-    const targetOps = config[pluralize.plural(opType)]
-
+const doOperations = (client, opType): Promise<void>[] => {
     // Target number of operations, reduced by a ramp factor, with some
     // randomness, multiplied by two to reach the target ops specified by the
     // user
-    const ops = Math.floor(targetOps * rampFactor(targetOps) * Math.random() * 2)
+    const numOps = Math.floor(getNumOps(opType) * Math.random() * 2)
 
-    return Array.from({ length: ops }, async () => {
-        const statObj = context.stats.ops[opType]
+    return Array.from({ length: numOps }, async () => {
+        const ctx = context[opType]
+        const outstanding = ctx.init - ctx.done
 
-        if (config.concurrency > context.outstandingRequests) {
-            context.outstandingRequests++
-
+        if (config.concurrency > outstanding) {
             const startTime = Date.now()
 
-            statObj.init++
+            ctx.init++
 
             const database = select('database')
             const collection = select('collection')
 
             try {
-                await doOperation(opType, database, collection)
+                await doOperation(client, opType, database, collection)
             } catch (err) {
                 console.log(err)
-                statObj.error++
+                ctx.error++
             }
 
-            statObj.done++
-            statObj.time += Date.now() - startTime
-            statObj.latency = Math.floor(statObj.time / statObj.done)
-
-            context.outstandingRequests--
+            ctx.done++
+            ctx.time += Date.now() - startTime
+            ctx.latency = Math.floor(ctx.time / ctx.done)
         } else {
-            statObj.skip++
+            ctx.skip++
         }
     })
+}
+
+const createClient = async (opType) => {
+    const label = `Client creation for ${opType}`
+    console.time(label)
+
+    const url = `mongodb://${config.host}:${config.port}`
+
+    const client = await mongodb.MongoClient.connect(
+        url,
+        {
+            // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
+            poolSize: config.concurrency,
+            bufferMaxEntries: 0,
+        },
+    )
+
+    console.log(`Connected to mongo at "${url}"`)
+    console.timeEnd(label)
+
+    return client
 }
 
 /**
  * Called on an interval to perform all mongo operations configured by the
  * user.
  */
-const operate = async (): Promise<void> => {
-    const statObj = context.stats.pulse
+const operate = async (opType) => {
+    const client = await createClient(opType)
 
-    const startTime = Date.now()
+    return async () => {
+        await Promise.all(doOperations(client, opType))
 
-    statObj.init++
+        if (config.reportInterval &&
+            config.reportInterval + context[opType].lastReportTime < Date.now()
+        ) {
+            context[opType].lastReportTime = Date.now()
 
-    await Promise.all([
-        ...doOperations('insert'),
-        ...doOperations('query'),
-    ])
-
-    statObj.done++
-    statObj.time += Date.now() - startTime
-    statObj.latency = Math.floor(statObj.time / statObj.done)
-
-    if (config.reportInterval &&
-        config.reportInterval + context.lastReportTime < Date.now()
-    ) {
-        context.lastReportTime = Date.now()
-
-        console.log(new Date(), `Elapsed: ${Math.floor((Date.now() - context.startTime) / 1000)} seconds; Outstanding: ${context.outstandingRequests}`)
-        console.log(JSON.stringify(context.stats, null, 2))
+            console.log(new Date(), `Elapsed: ${Math.floor((Date.now() - context.startTime) / 1000)} seconds`)
+            console.log(JSON.stringify(_.pick(context, [opType]), null, 2))
+        }
     }
 }
 
@@ -254,9 +253,11 @@ const createCollections = async () => {
     console.log(`Creating ${config.databases} databases with ${config.collections} collections`)
     console.time('createCollections')
 
+    const client = await createClient('createCollections')
+
     for (let i = 0; i < config.databases; i++) {
         const dbName = getName('database', i)
-        const db = await context.client.db(dbName)
+        const db = await client.db(dbName)
 
         for (let j = 0; j < config.collections; j++) {
             await db.createCollection(getName('collection', j))
@@ -275,25 +276,15 @@ const init = async () => {
 
     console.log(config)
 
-    const url = `mongodb://${config.host}:${config.port}`
-
     context.startTime = Date.now()
-    context.client = await mongodb.MongoClient.connect(
-        url,
-        {
-            // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
-            poolSize: config.concurrency,
-            bufferMaxEntries: 0,
-        },
-    )
-
-    console.log(`Connected to mongo at "${url}"`)
 
     if (config.precreate) {
         await createCollections()
     }
 
-    setInterval(operate, config.interval)
+    for await (let handler of ['insert', 'query'].map(operate)) {
+        setInterval(handler, config.interval)
+    }
 }
 
 init()
