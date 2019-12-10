@@ -128,7 +128,7 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
         assert.equal(numDocuments, res.ops.length)
 
     } else if (opType === 'query') {
-        res = await coll.find(generateDocument())
+        res = await coll.find(generateDocument()).toArray()
 
     } else if (opType === 'update') {
         res = await coll.updateOne(
@@ -139,8 +139,6 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
     } else {
         throw Error(`Unknown operation "${opType}"`)
     }
-
-    // console.log(JSON.stringify(res, null, 2))
 }
 
 const getNumOps = (opType) => {
@@ -284,7 +282,11 @@ const init = async () => {
         setInterval(report, config.reportInterval)
     }
 
-    for await (let handler of ['insert', 'query', 'update'].map(operate)) {
+    for await (let handler of [
+        //'insert',
+        'query',
+        //'update',
+    ].map(operate)) {
         setInterval(handler, config.interval)
     }
 }
