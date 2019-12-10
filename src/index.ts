@@ -30,6 +30,7 @@ program
     .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 8)
     .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
     .option('-U, --updates <integer>', 'Target number of concurrent updates', coerceInteger, 16)
+    .option('-C, --commands <integer>', 'Target number of concurrent commands', coerceInteger, 10)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
     .option('--max-documents <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
@@ -49,6 +50,7 @@ const config = _.pick(
         'inserts',
         'queries',
         'updates',
+        'commands',
         'distribution',
         'maxDocuments',
         'host',
@@ -71,6 +73,7 @@ const context = {
     insert: _.clone(opContext),
     query: _.clone(opContext),
     update: _.clone(opContext),
+    command: _.clone(opContext),
 }
 
 const getName = (dimension, i) => `${dimension}_${i}`
@@ -135,6 +138,11 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
             generateDocument(),
             { $set: generateDocument() },
         )
+
+    } else if (opType === 'command') {
+        try {
+            res = await db.admin().replSetGetStatus()
+        } catch {}
 
     } else {
         throw Error(`Unknown operation "${opType}"`)
@@ -286,6 +294,7 @@ const init = async () => {
         'insert',
         'query',
         'update',
+        'command',
     ].map(operate)) {
         setInterval(handler, config.interval)
     }
