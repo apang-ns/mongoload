@@ -28,10 +28,15 @@ const config = {
             concurrency: 256,
             intervalMs: 100,
         },
-        command: {
+        replSetGetStatus: {
             opsPerInterval: 10,
             concurrency: 256,
             intervalMs: 100,
+        },
+        serverStatus: {
+            opsPerInterval: 2,
+            concurrency: 16,
+            intervalMs: 1000,
         },
     },
 }
@@ -118,10 +123,13 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
             { $set: generateDocument() },
         )
 
-    } else if (opType === 'command') {
+    } else if (opType === 'replSetGetStatus') {
         try {
             res = await db.admin().replSetGetStatus()
         } catch {}
+
+    } else if (opType === 'serverStatus') {
+        res = await db.admin().serverStatus()
 
     } else {
         throw Error(`Unknown operation "${opType}"`)
