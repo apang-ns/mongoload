@@ -283,9 +283,9 @@ const init = async () => {
     }
 
     for await (let handler of [
-        //'insert',
+        'insert',
         'query',
-        //'update',
+        'update',
     ].map(operate)) {
         setInterval(handler, config.interval)
     }
