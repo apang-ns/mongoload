@@ -47,9 +47,10 @@ const context = {
 
 const initConfig = () => {
     const args = process.argv
-    console.log(args)
+
     if (args.length > 2) {
-        const userConfig = RJSON.parse(args.slice(2).join(' '))
+        const json = args.slice(2).join(' ')
+        const userConfig = RJSON.parse(json)
 
         Object.assign(config, userConfig)
     }
@@ -270,8 +271,6 @@ const init = async () => {
     initConfig()
     initContext()
 
-    console.log(context)
-
     if (config.precreate) {
         await createCollections()
     }
@@ -281,7 +280,7 @@ const init = async () => {
     }
 
     const opTypes = Object.keys(config.ops)
-    console.log(opTypes)
+
     for await (const [handler, interval] of opTypes.map(initOperations)) {
         setInterval(handler, interval)
     }
