@@ -20,7 +20,7 @@ const config = {
         },
         query: {
             opsPerInterval: 10,
-            concurrency: 127,
+            concurrency: 1024,
             intervalMs: 100,
         },
         update: {
@@ -30,12 +30,12 @@ const config = {
         },
         replSetGetStatus: {
             opsPerInterval: 10,
-            concurrency: 256,
+            concurrency: 1024,
             intervalMs: 100,
         },
         serverStatus: {
             opsPerInterval: 2,
-            concurrency: 16,
+            concurrency: 64,
             intervalMs: 1000,
         },
     },
