@@ -27,8 +27,9 @@ program
     .option('-c, --concurrency <integer>', 'Number of concurrent requests', coerceInteger, 256)
     .option('-r, --rampup', 'Ramp up load')
     .option('--no-precreate', 'Do not precreate databases and collections')
-    .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 10)
+    .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 8)
     .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
+    .option('-U, --updates <integer>', 'Target number of concurrent updates', coerceInteger, 16)
     .option('-D, --distribution <function>', 'Distribution of operations', 'random')
     .option('--max-documents <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
     .option('-h, --host <host>', 'Hostname', '127.0.0.1')
@@ -47,6 +48,7 @@ const config = _.pick(
         'precreate',
         'inserts',
         'queries',
+        'updates',
         'distribution',
         'maxDocuments',
         'host',
@@ -55,26 +57,20 @@ const config = _.pick(
     ]
 )
 
+const opContext = {
+    init: 0,
+    done: 0,
+    time: 0,
+    latency: 0,
+    error: 0,
+    skip: 0,
+}
+
 const context = {
     startTime: 0,
-    insert: {
-        init: 0,
-        done: 0,
-        time: 0,
-        latency: 0,
-        error: 0,
-        skip: 0,
-        lastReportTime: 0,
-    },
-    query: {
-        init: 0,
-        done: 0,
-        time: 0,
-        latency: 0,
-        error: 0,
-        skip: 0,
-        lastReportTime: 0,
-    },
+    insert: _.clone(opContext),
+    query: _.clone(opContext),
+    update: _.clone(opContext),
 }
 
 const getName = (dimension, i) => `${dimension}_${i}`
@@ -118,25 +114,33 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
     const db = await client.db(database)
     const coll = await db.collection(collection)
 
+    let res
+
     if (opType === 'insert') {
         // Randomized number of documents, from 1
         const numDocuments = Math.ceil(config.maxDocuments * Math.random())
 
         const documents = Array.from({ length: numDocuments }, generateDocument)
 
-        const res = await coll.insertMany(documents)
+        res = await coll.insertMany(documents)
 
         assert.equal(numDocuments, res.result.n)
         assert.equal(numDocuments, res.ops.length)
 
     } else if (opType === 'query') {
-        const res = await coll.find(generateDocument())
+        res = await coll.find(generateDocument())
 
-        // console.log(JSON.stringify(res, null, 2))
+    } else if (opType === 'update') {
+        res = await coll.updateOne(
+            generateDocument(),
+            { $set: generateDocument() },
+        )
 
     } else {
         throw Error(`Unknown operation "${opType}"`)
     }
+
+    // console.log(JSON.stringify(res, null, 2))
 }
 
 const getNumOps = (opType) => {
@@ -235,18 +239,12 @@ const createClient = async (opType) => {
 const operate = async (opType) => {
     const client = await createClient(opType)
 
-    return async () => {
-        await Promise.all(doOperations(client, opType))
+    return async () => await Promise.all(doOperations(client, opType))
+}
 
-        if (config.reportInterval &&
-            config.reportInterval + context[opType].lastReportTime < Date.now()
-        ) {
-            context[opType].lastReportTime = Date.now()
-
-            console.log(new Date(), `Elapsed: ${Math.floor((Date.now() - context.startTime) / 1000)} seconds`)
-            console.log(JSON.stringify(_.pick(context, [opType]), null, 2))
-        }
-    }
+const report = () => {
+    console.log(new Date(), `Elapsed: ${Math.floor((Date.now() - context.startTime) / 1000)} seconds`)
+    console.log(JSON.stringify(context, null, 2))
 }
 
 const createCollections = async () => {
@@ -282,7 +280,11 @@ const init = async () => {
         await createCollections()
     }
 
-    for await (let handler of ['insert', 'query'].map(operate)) {
+    if (config.reportInterval) {
+        setInterval(report, config.reportInterval)
+    }
+
+    for await (let handler of ['insert', 'query', 'update'].map(operate)) {
         setInterval(handler, config.interval)
     }
 }
