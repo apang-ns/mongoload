@@ -15,18 +15,18 @@ const config = {
     ops: {
         insert: {
             opsPerInterval: 8, // Target number of inserts to perform at each interval
-            concurrency: 256, // Maximum number of concurrent requests outstanding
+            concurrency: 512, // Maximum number of concurrent requests outstanding
             intervalMs: 100, // How often to operate (milliseconds)
             maxDocumentsPerOp: 10, // Maximum number of documents per insert
         },
         query: {
             opsPerInterval: 16,
-            concurrency: 1024,
+            concurrency: 2048,
             intervalMs: 100,
         },
         update: {
             opsPerInterval: 16,
-            concurrency: 256,
+            concurrency: 512,
             intervalMs: 100,
         },
         replSetGetStatus: {
