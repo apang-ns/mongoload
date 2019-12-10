@@ -206,6 +206,12 @@ const doOperations = (client, opType): Promise<void>[] => {
     })
 }
 
+/**
+ * Create a client and connect with mongo. Configuration can be changed in
+ * the command line.
+ *
+ * @param opType Type of operation this client is created for (e.g. insert)
+ */
 const createClient = async (opType) => {
     const label = `Client creation for ${opType}`
     console.time(label)
@@ -246,6 +252,9 @@ const report = () => {
     console.log(JSON.stringify(context, null, 2))
 }
 
+/**
+ * Precreate all databases and collections.
+ */
 const createCollections = async () => {
     console.log(`Creating ${config.numDatabases} databases with ${config.numCollections} collections`)
     console.time('createCollections')
