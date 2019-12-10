@@ -1,101 +1,79 @@
 import * as _ from 'lodash'
 import * as assert from 'assert'
-import * as program from 'commander'
-import * as pluralize from 'pluralize'
 import * as mongodb from 'mongodb'
+import * as RJSON from 'relaxed-json'
 
-const coerceInteger = (val, prev) => {
-    const n = parseInt(val)
-
-    assert(!isNaN(n), `Expected "${val}" to be an integer`)
-
-    return n
-}
-
-const coerceFloat = (val, prev) => {
-    const n = parseFloat(val)
-
-    assert(!isNaN(n), `Expected "${val}" to be a float`)
-
-    return n
-}
-
-program
-    .option('-d, --databases <integer>', 'Number of databases', coerceInteger, 500)
-    .option('-c, --collections <integer>', 'Number of collections', coerceInteger, 100)
-    .option('-i, --interval <ms>', 'How often to operate (milliseconds)', coerceInteger, 100)
-    .option('-c, --concurrency <integer>', 'Number of concurrent requests', coerceInteger, 256)
-    .option('-r, --rampup', 'Ramp up load')
-    .option('--no-precreate', 'Do not precreate databases and collections')
-    .option('-I, --inserts <integer>', 'Target number of concurrent insertions', coerceInteger, 8)
-    .option('-Q, --queries <integer>', 'Target number of concurrent queries', coerceInteger, 10)
-    .option('-U, --updates <integer>', 'Target number of concurrent updates', coerceInteger, 16)
-    .option('-C, --commands <integer>', 'Target number of concurrent commands', coerceInteger, 10)
-    .option('-D, --distribution <function>', 'Distribution of operations', 'random')
-    .option('--max-documents <integer>', 'Maximum number of documents per insert', coerceInteger, 10)
-    .option('-h, --host <host>', 'Hostname', '127.0.0.1')
-    .option('-p, --port <port>', 'Port', '27017')
-    .option('-R, --report-interval <ms>', 'Time between reports (0 to disable)', coerceInteger, 1000)
-    .parse(process.argv)
-
-const config = _.pick(
-    program,
-    [
-        'databases',
-        'collections',
-        'interval',
-        'concurrency',
-        'rampup',
-        'precreate',
-        'inserts',
-        'queries',
-        'updates',
-        'commands',
-        'distribution',
-        'maxDocuments',
-        'host',
-        'port',
-        'reportInterval',
-    ]
-)
-
-const opContext = {
-    init: 0,
-    done: 0,
-    time: 0,
-    latency: 0,
-    error: 0,
-    skip: 0,
+const config = {
+    numDatabases: 256, // Number of databases to simulate
+    numCollections: 128, // Number of collections to simulate
+    rampup: false, // Slowly ramp up load
+    precreate: true, // Precreate databases and collections
+    host: '127.0.0.1',
+    port: '27017',
+    reportIntervalMs: 1000, // Time between reports (0 to disable)
+    ops: {
+        insert: {
+            opsPerInterval: 8, // Target number of inserts to perform at each interval
+            concurrency: 256, // Maximum number of concurrent requests outstanding
+            intervalMs: 100, // How often to operate (milliseconds)
+            maxDocumentsPerOp: 10, // Maximum number of documents per insert
+        },
+        query: {
+            opsPerInterval: 10,
+            concurrency: 127,
+            intervalMs: 100,
+        },
+        update: {
+            opsPerInterval: 16,
+            concurrency: 256,
+            intervalMs: 100,
+        },
+        command: {
+            opsPerInterval: 10,
+            concurrency: 256,
+            intervalMs: 100,
+        },
+    },
 }
 
 const context = {
     startTime: 0,
-    insert: _.clone(opContext),
-    query: _.clone(opContext),
-    update: _.clone(opContext),
-    command: _.clone(opContext),
+}
+
+const initConfig = () => {
+    const args = process.argv
+    console.log(args)
+    if (args.length > 2) {
+        const userConfig = RJSON.parse(args.slice(2).join(' '))
+
+        Object.assign(config, userConfig)
+    }
+
+    console.log(JSON.stringify(config, null, 2))
+}
+
+const initContext = () => {
+    context.startTime = Date.now()
+
+    Object.keys(config.ops).forEach((op) => {
+        context[op] = {
+            init: 0,
+            done: 0,
+            time: 0,
+            latency: 0,
+            error: 0,
+            skip: 0,
+        }
+    })
 }
 
 const getName = (dimension, i) => `${dimension}_${i}`
 
-/**
- * Takes a dimension, such as database, and returns a name for an element within
- * the dimension. The size of the dimension is configured by the user.
- *
- * @param dimension What we are selecting (e.g. database, collection)
- */
-const select = (dimension) => {
-    // Get the size of the dimension from the configuration
-    const size = config[pluralize.plural(dimension)]
-    const selection = Math.floor(size * Math.random())
+const selectDatabase = () =>
+    getName('database', Math.floor(config.numDatabases * Math.random()))
 
-    assert(
-        config.distribution === 'random',
-        `Distribution function "${config.distribution}" is not supported`,
-    )
-
-    return getName(dimension, selection)
-}
+const selectCollection = () =>
+    getName('collection', Math.floor(config.numCollections * Math.random()))
 
 const getRandomChar = () =>
     String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
@@ -121,7 +99,8 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
 
     if (opType === 'insert') {
         // Randomized number of documents, from 1
-        const numDocuments = Math.ceil(config.maxDocuments * Math.random())
+        const numDocuments = Math.ceil(
+            config.ops['insert'].maxDocumentsPerOp * Math.random())
 
         const documents = Array.from({ length: numDocuments }, generateDocument)
 
@@ -150,7 +129,7 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
 }
 
 const getNumOps = (opType) => {
-    const targetOps = config[pluralize.plural(opType)]
+    const targetOps = config.ops[opType].opsPerInterval
 
     if (!config.rampup) {
         return targetOps
@@ -193,13 +172,13 @@ const doOperations = (client, opType): Promise<void>[] => {
         const ctx = context[opType]
         const outstanding = ctx.init - ctx.done
 
-        if (config.concurrency > outstanding) {
+        if (config.ops[opType].concurrency > outstanding) {
             const startTime = Date.now()
 
             ctx.init++
 
-            const database = select('database')
-            const collection = select('collection')
+            const database = selectDatabase()
+            const collection = selectCollection()
 
             try {
                 await doOperation(client, opType, database, collection)
@@ -222,17 +201,18 @@ const createClient = async (opType) => {
     console.time(label)
 
     const url = `mongodb://${config.host}:${config.port}`
+    const poolSize = config.ops[opType] && config.ops[opType].concurrency
 
     const client = await mongodb.MongoClient.connect(
         url,
         {
             // http://mongodb.github.io/node-mongodb-native/3.3/reference/connecting/connection-settings/
-            poolSize: config.concurrency,
+            poolSize,
             bufferMaxEntries: 0,
         },
     )
 
-    console.log(`Connected to mongo at "${url}"`)
+    console.log(`Connected to mongo at "${url}" with pool size ${poolSize}`)
     console.timeEnd(label)
 
     return client
@@ -242,10 +222,13 @@ const createClient = async (opType) => {
  * Called on an interval to perform all mongo operations configured by the
  * user.
  */
-const operate = async (opType) => {
+const initOperations = async (opType) => {
     const client = await createClient(opType)
 
-    return async () => await Promise.all(doOperations(client, opType))
+    return [
+        async () => await Promise.all(doOperations(client, opType)),
+        config.ops[opType].intervalMs,
+    ]
 }
 
 const report = () => {
@@ -254,19 +237,19 @@ const report = () => {
 }
 
 const createCollections = async () => {
-    console.log(`Creating ${config.databases} databases with ${config.collections} collections`)
+    console.log(`Creating ${config.numDatabases} databases with ${config.numCollections} collections`)
     console.time('createCollections')
 
     const client = await createClient('createCollections')
 
-    for (let i = 0; i < config.databases; i++) {
+    for (let i = 0; i < config.numDatabases; i++) {
         const dbName = getName('database', i)
         const db = await client.db(dbName)
 
-        for (let j = 0; j < config.collections; j++) {
+        for (let j = 0; j < config.numCollections; j++) {
             await db.createCollection(getName('collection', j))
         }
-        console.log(`Created ${config.collections} collections in database ${dbName}`)
+        console.log(`Created ${config.numCollections} collections in database ${dbName}`)
     }
 
     console.timeEnd('createCollections')
@@ -276,27 +259,23 @@ const createCollections = async () => {
  * Initializes operations at the user configured interval
  */
 const init = async () => {
-    assert(config.interval, 'Operating interval must be set')
+    initConfig()
+    initContext()
 
-    console.log(config)
-
-    context.startTime = Date.now()
+    console.log(context)
 
     if (config.precreate) {
         await createCollections()
     }
 
-    if (config.reportInterval) {
-        setInterval(report, config.reportInterval)
+    if (config.reportIntervalMs) {
+        setInterval(report, config.reportIntervalMs)
     }
 
-    for await (let handler of [
-        'insert',
-        'query',
-        'update',
-        'command',
-    ].map(operate)) {
-        setInterval(handler, config.interval)
+    const opTypes = Object.keys(config.ops)
+    console.log(opTypes)
+    for await (const [handler, interval] of opTypes.map(initOperations)) {
+        setInterval(handler, interval)
     }
 }
 
