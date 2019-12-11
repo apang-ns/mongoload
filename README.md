@@ -1,6 +1,6 @@
 # mongoload
 
-Setup
+## Setup
 
 Docker with 8 cores and 16GB of memory.
 
@@ -9,8 +9,11 @@ Node v10+ and Typescript installed.
 https://nodejs.org/en/download/
 https://www.typescriptlang.org/
 
-Operation
+## Operation
 
+### Mongo
+
+```
 apang-mbp:~ andypang$ docker run -p 27017:27017 --rm --name mongo -v /Users/andypang/code/mongoload:/etc/mongo -d mongo:3.6.12 --config /etc/mongo/mongod.conf
 b5516fbf9619771e2d5c529296375654c288924211978d5969015594b320a890
 apang-mbp:~ andypang$ docker exec -it mongo bash
@@ -21,8 +24,11 @@ insert query update delete getmore command dirty used flushes vsize   res   qrw 
    271    *0     *0     *0       0     2|0  0.6% 8.7%       0 5.01G 3.80G 0|0 1|42  28.2k   63.5k  257 Dec 10 00:27:44.889            0     126       125    7272253       158261 1.0676737045e+10             8488     13540420 17341123   477129   129366065     96292     90795 344760 190418   227999          6511
    725    *0     *0     *0       0     1|0  0.6% 8.7%       0 5.01G 3.80G 0|0  1|0  29.9k   67.4k  257 Dec 10 00:27:45.890            0     126       125    7272253       158672 1.0736518903e+10             8492     13541207 17354436   485668   130351396     88474     91094 344760 198596   240547          6511
    260    *0     *0     *0       0     3|0  0.6% 8.8%       1 5.01G 3.80G 0|0 1|74  38.2k   63.3k  257 Dec 10 00:27:46.888            1     127       125    7272253       158720 1.0736594265e+10             8497     13541207 17354556   495313   130505023     98119     91094 344760 198596   240636          6511
+```
 
+### Applying Load
 
+```
 apang-mbp:mongoload andypang$ npm install
 npm WARN mongoload@1.0.0 No repository field.
 
@@ -193,3 +199,4 @@ Client creation for update: 26.106ms
     "skip": 0
   }
 }
+```
