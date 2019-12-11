@@ -26,7 +26,7 @@ const config = {
         },
         query: {
             opsPerInterval: 32,
-            concurrency: 2048,
+            concurrency: 1024,
             intervalMs: 100,
         },
         update: {
@@ -102,10 +102,10 @@ const getRandomChar = () =>
     String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
 
 /**
- * Generate a simple random document. e.g. { a: 1 }
+ * Generate a simple document. e.g. { a: 1 }
  */
 const generateDocument = () => ({
-    [getRandomChar()]: Math.floor(100 * Math.random()),
+    a: Math.floor(100 * Math.random()),
 })
 
 /**
@@ -297,9 +297,13 @@ const createCollections = async () => {
         const db = await client.db(dbName)
 
         for (let j = 0; j < config.numCollections; j++) {
-            await db.createCollection(getName('collection', j))
+            const collectionName = getName('collection', j)
+            await db.createCollection(collectionName)
+
+            const coll = await db.collection(collectionName)
+            await coll.createIndex({ a: 1 })
         }
-        console.log(`Created ${config.numCollections} collections in database ${dbName}`)
+        console.log(`Created ${config.numCollections} collections and indices in database ${dbName}`)
     }
 
     console.timeEnd('createCollections')
