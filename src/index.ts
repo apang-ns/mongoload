@@ -3,12 +3,17 @@ import * as assert from 'assert'
 import * as mongodb from 'mongodb'
 import * as RJSON from 'relaxed-json'
 
+/**
+ * Default configuration. These can be overwritten via the command line like
+ * this:
+ * npm start -- "{ frequencyScale: 2, ops: { insert: { opsPerInterval: 8 } } }"
+ */
 const config = {
     numDatabases: 192, // Number of databases to simulate
     numCollections: 128, // Number of collections to simulate
-    frequencyScale: 1, // Increase frequency across all ops by this factor
-    rampup: false, // Slowly ramp up load
+    frequencyScale: 1, // Increase frequency across all op types by this factor
     precreate: true, // Precreate databases and collections
+    rampup: false, // Slowly ramp up load
     host: '127.0.0.1',
     port: '27017',
     reportIntervalMs: 1000, // Time between reports (0 to disable)
@@ -42,10 +47,9 @@ const config = {
     },
 }
 
-const context = {
-    startTime: 0,
-}
-
+/**
+ * Initialize configuration by merging user-provided config with defaults.
+ */
 const initConfig = () => {
     const args = process.argv
 
@@ -59,9 +63,14 @@ const initConfig = () => {
     console.log(JSON.stringify(config, null, 2))
 }
 
+const context = {
+    startTime: 0,
+}
+
 const initContext = () => {
     context.startTime = Date.now()
 
+    // Initialize context per op type configured
     Object.keys(config.ops).forEach((op) => {
         context[op] = {
             init: 0,
@@ -74,17 +83,27 @@ const initContext = () => {
     })
 }
 
+// e.g. "database_1"
 const getName = (dimension, i) => `${dimension}_${i}`
 
+/**
+ * Pick a random database and return its name
+ */
 const selectDatabase = () =>
     getName('database', Math.floor(config.numDatabases * Math.random()))
 
+/**
+ * Pick a random collection and return its name
+ */
 const selectCollection = () =>
     getName('collection', Math.floor(config.numCollections * Math.random()))
 
 const getRandomChar = () =>
     String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
 
+/**
+ * Generate a simple random document. e.g. { a: 1 }
+ */
 const generateDocument = () => ({
     [getRandomChar()]: Math.floor(100 * Math.random()),
 })
@@ -92,8 +111,7 @@ const generateDocument = () => ({
 /**
  * doOperation performs the specified mongo operation.
  *
- * Perhaps we should make a connection pool to use.
- *
+ * @param client Mongo client initialized once per operation type
  * @param opType Type of mongo operation (e.g. insert, query)
  * @param database Name of the database to operate on
  * @param collection Name of the collection to operate on
@@ -127,6 +145,7 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
 
     } else if (opType === 'replSetGetStatus') {
         try {
+            // This throws an exception for non-replicated setups. Ignore
             res = await db.admin().replSetGetStatus()
         } catch {}
 
@@ -138,6 +157,15 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
     }
 }
 
+/**
+ * If rampup is not enabled, this function simply returns the configured
+ * opsPerInterval.
+ *
+ * If rampup is enabled, it will return a reduced number of operations factored
+ * by how many operations have already been performed.
+ *
+ * @param opType Type of operation (e.g. insert)
+ */
 const getNumOps = (opType) => {
     const targetOps = config.ops[opType].opsPerInterval
 
@@ -182,6 +210,8 @@ const doOperations = (client, opType): Promise<void>[] => {
         const ctx = context[opType]
         const outstanding = ctx.init - ctx.done
 
+        // If we are waiting for ops to return, and this number is more than
+        // the configured concurrency for the operation type, skip.
         if (config.ops[opType].concurrency > outstanding) {
             const startTime = Date.now()
 
@@ -235,8 +265,9 @@ const createClient = async (opType) => {
 }
 
 /**
- * Called on an interval to perform all mongo operations configured by the
- * user.
+ * Initializes the operations object for the given operation type. Creates the
+ * client connection once and makes it available to the returned operation
+ * handler.
  */
 const initOperations = async (opType) => {
     const client = await createClient(opType)
@@ -275,7 +306,8 @@ const createCollections = async () => {
 }
 
 /**
- * Initializes operations at the user configured interval
+ * Initializes configuration and context. Creates databases and collections if
+ * configured. Sets intervals for reporting and performing operations.
  */
 const init = async () => {
     initConfig()
@@ -291,6 +323,7 @@ const init = async () => {
 
     const opTypes = Object.keys(config.ops)
 
+    // Create a timer for each operation type
     for await (const { handler, interval } of opTypes.map(initOperations)) {
         setInterval(handler, interval)
     }
