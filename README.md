@@ -4,10 +4,9 @@
 
 Docker with 8 cores and 16GB of memory.
 
-Node v10+ and Typescript installed.
+Install Node v10+: https://nodejs.org/en/download/
 
-https://nodejs.org/en/download/
-https://www.typescriptlang.org/
+Install Typescript: https://www.typescriptlang.org/
 
 ## Operation
 
@@ -94,10 +93,12 @@ Created 128 collections in database database_1
 Created 128 collections in database database_2
 Created 128 collections in database database_3
 Created 128 collections in database database_4
+```
 
 The second time running the script on the same mongo instance, there is no need
 to precreate collections.
 
+```
 apang-mbp:mongoload andypang$ npm start -- "{ host: '127.0.0.1', precreate: false }"
 
 > mongoload@1.0.0 start /Users/andypang/code/mongoload
