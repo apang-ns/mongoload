@@ -9,7 +9,7 @@ import * as RJSON from 'relaxed-json'
  * npm start -- "{ frequencyScale: 2, ops: { insert: { opsPerInterval: 8 } } }"
  */
 const config = {
-    numDatabases: 192, // Number of databases to simulate
+    numDatabases: 128, // Number of databases to simulate
     numCollections: 128, // Number of collections to simulate
     frequencyScale: 1, // Increase frequency across all op types by this factor
     precreate: true, // Precreate databases and collections
@@ -25,12 +25,12 @@ const config = {
             maxDocumentsPerOp: 5, // Maximum number of documents per insert
         },
         query: {
-            opsPerInterval: 32,
+            opsPerInterval: 16,
             concurrency: 1024,
             intervalMs: 100,
         },
         update: {
-            opsPerInterval: 16,
+            opsPerInterval: 8,
             concurrency: 512,
             intervalMs: 100,
         },
