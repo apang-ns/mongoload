@@ -19,31 +19,31 @@ const config = {
     reportIntervalMs: 1000, // Time between reports (0 to disable)
     ops: {
         insert: {
-            opsPerInterval: 4, // Target number of inserts to perform at each interval
+            opsPerInterval: 8, // Target number of inserts to perform at each interval
             concurrency: 512, // Maximum number of concurrent requests outstanding
             intervalMs: 100, // How often to operate (milliseconds)
             maxDocumentsPerOp: 5, // Maximum number of documents per insert
         },
         query: {
-            opsPerInterval: 16,
-            concurrency: 1024,
-            intervalMs: 100,
-        },
-        update: {
             opsPerInterval: 8,
             concurrency: 512,
             intervalMs: 100,
         },
-        replSetGetStatus: {
-            opsPerInterval: 5,
-            concurrency: 1024,
-            intervalMs: 1000,
+        update: {
+            opsPerInterval: 12,
+            concurrency: 512,
+            intervalMs: 100,
         },
-        serverStatus: {
-            opsPerInterval: 2,
-            concurrency: 64,
-            intervalMs: 1000,
-        },
+        // replSetGetStatus: {
+        //     opsPerInterval: 5,
+        //     concurrency: 1024,
+        //     intervalMs: 1000,
+        // },
+        // serverStatus: {
+        //     opsPerInterval: 2,
+        //     concurrency: 64,
+        //     intervalMs: 1000,
+        // },
     },
 }
 
