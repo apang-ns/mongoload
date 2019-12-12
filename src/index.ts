@@ -98,14 +98,19 @@ const selectDatabase = () =>
 const selectCollection = () =>
     getName('collection', Math.floor(config.numCollections * Math.random()))
 
-const getRandomChar = () =>
-    String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
+const getRandomChar = () => String.fromCharCode('a'.charCodeAt(0) + Math.floor(26 * Math.random()))
 
-/**
- * Generate a simple document. e.g. { a: 1 }
- */
+const getRandomNum = () => Math.floor(1000000 * Math.random())
+
+const INDEXED_ATTRIBUTE = 'a'
+
+const getIndexedAttribute = () => ({
+    [INDEXED_ATTRIBUTE]: getRandomNum(),
+})
+
 const generateDocument = () => ({
-    a: Math.floor(100 * Math.random()),
+    ...getIndexedAttribute(),
+    [getRandomChar()]: getRandomNum(),
 })
 
 /**
@@ -135,11 +140,11 @@ const doOperation = async (client, opType, database, collection): Promise<void> 
         assert.equal(numDocuments, res.ops.length)
 
     } else if (opType === 'query') {
-        res = await coll.find(generateDocument()).toArray()
+        res = await coll.find(getIndexedAttribute()).toArray()
 
     } else if (opType === 'update') {
         res = await coll.updateOne(
-            generateDocument(),
+            getIndexedAttribute(),
             { $set: generateDocument() },
         )
 
@@ -301,7 +306,7 @@ const createCollections = async () => {
             await db.createCollection(collectionName)
 
             const coll = await db.collection(collectionName)
-            await coll.createIndex({ a: 1 })
+            await coll.createIndex({ [INDEXED_ATTRIBUTE]: 1 })
         }
         console.log(`Created ${config.numCollections} collections and indices in database ${dbName}`)
     }
