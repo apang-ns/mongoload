@@ -254,6 +254,8 @@ const createClient = async (opType) => {
     const url = `mongodb://${config.host}:${config.port}`
     const poolSize = config.ops[opType] && config.ops[opType].concurrency
 
+    console.log(`Attempting connection to mongo at "${url}" with pool size ${poolSize}`)
+
     const client = await mongodb.MongoClient.connect(
         url,
         {
@@ -326,15 +328,15 @@ const init = async () => {
         await createCollections()
     }
 
-    if (config.reportIntervalMs) {
-        setInterval(report, config.reportIntervalMs)
-    }
-
     const opTypes = Object.keys(config.ops)
 
     // Create a timer for each operation type
     for await (const { handler, interval } of opTypes.map(initOperations)) {
         setInterval(handler, interval)
+    }
+
+    if (config.reportIntervalMs) {
+        setInterval(report, config.reportIntervalMs)
     }
 }
 
