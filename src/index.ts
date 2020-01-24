@@ -209,7 +209,7 @@ const doOperations = (client, opType): Promise<void>[] => {
     // Target number of operations, reduced by a ramp factor, with some
     // randomness, multiplied by two to reach the target ops specified by the
     // user
-    const numOps = Math.floor(getNumOps(opType) * Math.random() * 2)
+    const numOps = Math.ceil(getNumOps(opType) * Math.random() * 2)
 
     return Array.from({ length: numOps }, async () => {
         const ctx = context[opType]
